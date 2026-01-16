@@ -129,3 +129,13 @@ dmypy.json
 .pyre/
 output/
 .vscode/
+
+# ide
+.DS_Store
+.cursor/
+.codebuddy/
+.claude/
+openspec/
+AGENTS.md
+CLAUDE.md
+CODEBUDDY.md

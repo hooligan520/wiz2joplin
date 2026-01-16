@@ -1,96 +1,121 @@
-Migrate from WizNote to Joplin.
+# 从 WizNote 迁移到 Joplin 或 Obsidian
 
-## !!!CAUTION!!!!
+## 注意事项
 
-wiz2joplin has only been tested in wizNote for Mac 2.8.7. AFAIK, the folder structure of the macOS and Windows versions of wizNote may be different.
+wiz2joplin 仅在 wizNote for Mac 2.8.7 版本上测试过。据我所知，macOS 和 Windows 版本的 wizNote 文件夹结构可能不同。
 
-If you can provide a pull request for wizNote of Windows, I believe it will be helpful to many people.
+如果您能为 Windows 版本的 wizNote 提供 pull request，我相信这对很多人都会有帮助。
 
-## Dependency
+## 依赖要求
 
 - Python 3.9
-- macOS Catalina or above
+- macOS Catalina 或更高版本
 - wizNote for Mac 2.8.7 (2020.8.20 10:28)
 - ![wiznote for macOS](wiznoteformac.png)
 
-## Installation
+## 安装
 
-To install this tool, you can use pip:
+您可以使用 pip 安装此工具：
 
-```
+```bash
 python -m venv ~/w2j/venv
 source ~/w2j/venv/bin/activate
 pip install w2j
 ```
 
-Alternatively, you can install the package using the bundled setup script:
+或者，您可以使用打包的 setup 脚本安装：
 
-```
+```bash
 python -m venv ~/w2j/venv
 source ~/w2j/venv/bin/activate
 python setup.py install
 ```
 
-## Usage
+## 使用方法
 
-If your WizNote user id is `youremail@yourdomain.com`, the token in Joplin Web Clipper is `aa630825022a340ecbe5d3e2f25e5f6a`, and Joplin run on the same computer, you can use wiz2joplin like follows.
+### 迁移到 Joplin
 
-Convert all of documents from wizNote to Joplin:
+如果您的 WizNote 用户 ID 是 `youremail@yourdomain.com`，Joplin Web Clipper 的 token 是 `aa630825022a340ecbe5d3e2f25e5f6a`，并且 Joplin 运行在同一台计算机上，您可以按以下方式使用 wiz2joplin。
 
-``` shell
-w2j -o ~/w2j -w ~/.wiznote -u youremail@yourdomain.com -t aa630825022a340ecbe5d3e2f25e5f6a -a
-```
-
-Convert location `/My Notes/reading/` and all of the children documents from WizNote to Joplin:
+将所有文档从 wizNote 迁移到 Joplin：
 
 ``` shell
-w2j -o ~/w2j -w ~/.wiznote -u youremail@yourdomain.com -t aa630825022a340ecbe5d3e2f25e5f6a -l '/My Note/reading/' -r
-
+w2j --target joplin -o ~/w2j -w ~/.wiznote -u youremail@yourdomain.com -t aa630825022a340ecbe5d3e2f25e5f6a -a
 ```
 
-Use `w2j --help` to show usage for w2j:
+将 WizNote 中 `/My Notes/reading/` 位置及其所有子目录的文档迁移到 Joplin：
 
+``` shell
+w2j --target joplin -o ~/w2j -w ~/.wiznote -u youremail@yourdomain.com -t aa630825022a340ecbe5d3e2f25e5f6a -l '/My Note/reading/' -r
 ```
-usage: w2j [-h] --output OUTPUT --wiz-dir WIZNOTE_DIR --wiz-user
-           WIZNOTE_USER_ID --joplin-token JOPLIN_TOKEN
-           [--joplin-host JOPLIN_HOST] [--joplin-port JOPLIN_PORT]
+
+### 迁移到 Obsidian
+
+将所有文档从 WizNote 迁移到 Obsidian：
+
+``` shell
+w2j --target obsidian --obsidian-vault ~/Documents/ObsidianVault -o ~/w2o -w ~/.wiznote -u youremail@yourdomain.com -a
+```
+
+将 WizNote 中 `/My Notes/reading/` 位置及其所有子目录的文档迁移到 Obsidian：
+
+``` shell
+w2j --target obsidian --obsidian-vault ~/Documents/ObsidianVault -o ~/w2o -w ~/.wiznote -u youremail@yourdomain.com -l '/My Note/reading/' -r
+```
+
+**注意**：迁移到 Obsidian 时：
+
+- 笔记以 Markdown 文件（`.md`）格式导出到指定的 Vault 路径
+- 附件保存到 `{笔记名}.md_Attachments/` 文件夹中
+- 内部链接转换为 Obsidian 格式（文档链接为 `[[笔记标题]]`，附件/图片链接为 `![[附件名]]`）
+- 标签同时添加到 Front Matter 和正文中（`#标签` 格式）
+- 文件时间戳（创建/修改时间）会被保留
+
+使用 `w2j --help` 查看 w2j 的使用说明：
+
+```text
+用法: w2j [-h] --output OUTPUT --wiz-dir WIZNOTE_DIR --wiz-user
+           WIZNOTE_USER_ID [--target {joplin,obsidian}]
+           [--joplin-token JOPLIN_TOKEN] [--joplin-host JOPLIN_HOST]
+           [--joplin-port JOPLIN_PORT] [--obsidian-vault OBSIDIAN_VAULT]
            [--location LOCATION] [--location-children] [--all]
 
-Migrate from WizNote to Joplin.
+从 WizNote 迁移到 Joplin 或 Obsidian。
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --output OUTPUT, -o OUTPUT
-                        The output dir for unziped WizNote file and log file.
-                        e.g. ~/wiz2joplin_output or
+可选参数:
+  -h, --help            显示帮助信息并退出
+  --output, -o OUTPUT   解压 WizNote 文件和日志文件的输出目录。
+                        例如 ~/wiz2joplin_output 或
                         C:\Users\zrong\wiz2joplin_output
-  --wiz-dir WIZNOTE_DIR, -w WIZNOTE_DIR
-                        Set the data dir of WizNote. e.g ~/.wiznote or
+  --wiz-dir, -w WIZNOTE_DIR
+                        设置 WizNote 的数据目录。例如 ~/.wiznote 或
                         C:\Program Files\WizNote
-  --wiz-user WIZNOTE_USER_ID, -u WIZNOTE_USER_ID
-                        Set your user id(login email) of WizNote.
-  --joplin-token JOPLIN_TOKEN, -t JOPLIN_TOKEN
-                        Set the authorization token to access Joplin Web
-                        Clipper Service.
-  --joplin-host JOPLIN_HOST, -n JOPLIN_HOST
-                        Set the host of your Joplin Web Clipper Service,
-                        default is 127.0.0.1
-  --joplin-port JOPLIN_PORT, -p JOPLIN_PORT
-                        Set the port of your Joplin Web Clipper Service,
-                        default is 41184
-  --location LOCATION, -l LOCATION
-                        Convert the location of WizNote, e.g. /My Notes/. If
-                        you use the --all parameter, then skip --location
-                        parameter.
+  --wiz-user, -u WIZNOTE_USER_ID
+                        设置您的 WizNote 用户 ID（登录邮箱）。
+  --target {joplin,obsidian}
+                        目标平台：joplin 或 obsidian（默认：joplin）
+  --joplin-token, -t JOPLIN_TOKEN
+                        设置访问 Joplin Web Clipper 服务的授权令牌。
+                        当 --target=joplin 时必需
+  --joplin-host, -n JOPLIN_HOST
+                        设置您的 Joplin Web Clipper 服务的主机地址，
+                        默认为 127.0.0.1
+  --joplin-port, -p JOPLIN_PORT
+                        设置您的 Joplin Web Clipper 服务的端口，
+                        默认为 41184
+  --obsidian-vault OBSIDIAN_VAULT
+                        设置 Obsidian Vault 路径。当 --target=obsidian 时必需
+  --location, -l LOCATION
+                        转换 WizNote 的位置，例如 /My Notes/。如果使用
+                        --all 参数，则跳过 --location 参数。
   --location-children, -r
-                        Use with --location parameter, convert all children
-                        location of --location.
-  --all, -a             Convert all documents of your WizNote.
+                        与 --location 参数一起使用，转换 --location 的所有子位置。
+  --all, -a             转换 WizNote 的所有文档。
 ```
 
-## Log file
+## 日志文件
 
-Please read log file `w2j.log` under --output directory to check the conversion states.
+请查看 --output 目录下的 `w2j.log` 日志文件以检查转换状态。
 
 ## 源码分析相关文章
 

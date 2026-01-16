@@ -395,8 +395,8 @@ class ConvertUtil():
         return waiting_for_created
 
 
-class Adapter(object):
-    """ 负责把为知笔记的对象转换成对应想 Joplin 笔记对象
+class JoplinAdapter(object):
+    """ 负责把为知笔记的对象转换成对应的 Joplin 笔记对象
     """
 
     ws: WizStorage
@@ -593,3 +593,42 @@ class Adapter(object):
         logger.info(f'为知笔记转换所有文档 {len(self.ws.documents)} 篇。')
         for wd in self.ws.documents:
             self._sync_note(wd)
+
+
+# 保持向后兼容
+Adapter = JoplinAdapter
+
+
+class ObsidianAdapter(object):
+    """ 负责把为知笔记的对象转换成 Obsidian 笔记文件
+    """
+
+    ws: WizStorage
+    obsidian_storage: 'ObsidianStorage'
+    work_dir: Path
+
+    def __init__(self, ws: WizStorage, vault_path: Path, work_dir: Path=None) -> None:
+        from w2j.obsidian import ObsidianStorage
+        self.ws = ws
+        self.work_dir = work_dir or default_work_dir
+
+        # 解析所有的文档，使用 strict_check=False 允许缺失附件
+        self.ws.resolve(strict_check=False)
+
+        # 创建 Obsidian 存储
+        self.obsidian_storage = ObsidianStorage(vault_path, self.work_dir)
+
+    def sync_note_by_location(self, location: str, with_children: bool=True) -> None:
+        """ 同步指定为知笔记目录中所有的笔记
+        """
+        self.obsidian_storage.sync_by_location(self.ws.documents, location, with_children)
+
+    def sync_all(self) -> None:
+        """ 同步所有内容
+        """
+        self.obsidian_storage.sync_all(self.ws.documents)
+
+    def close(self):
+        """ 关闭资源
+        """
+        self.obsidian_storage.close()

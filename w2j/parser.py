@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import chardet
 from inscriptis import get_text
+from w2j import logger
 
 
 RE_A_START = r'<a href="'
@@ -71,20 +72,24 @@ class WizImage(object):
     # 图像文件的 Path 对象，在硬盘上的路径
     file: Path = None
 
-    def __init__(self, outerhtml: str, src: str, note_extract_dir: Path) -> None:
+    def __init__(self, outerhtml: str, src: str, note_extract_dir: Path, strict_check: bool = True) -> None:
         self.outerhtml = outerhtml
         self.src = src
         self.file = note_extract_dir.joinpath(src)
 
         if not self.file.exists():
-            raise FileNotFoundError(f'找不到文件 {self.file}！')
+            if strict_check:
+                raise FileNotFoundError(f'找不到文件 {self.file}！')
+            else:
+                logger.warning(f'图片文件缺失: {self.file}，将跳过此图片。')
 
     def __repr__(self) -> str:
         return f'<WizImage {self.src}, {self.outerhtml}>'
 
 
-def parse_wiz_html(note_extract_dir: Path, title: str) -> tuple[str, list[WizInternalLink], list[WizImage]]:
+def parse_wiz_html(note_extract_dir: Path, title: str, strict_check: bool = True) -> tuple[str, list[WizInternalLink], list[WizImage]]:
     """ 在为知笔记文档的 index.html 中搜索内链的附件和文档链接
+    :param strict_check: 是否严格检查图片文件存在性，默认 True。设为 False 时，缺失图片只记录警告不中断
     """
     index_html = note_extract_dir.joinpath('index.html')
     if not index_html.is_file:
@@ -121,8 +126,11 @@ def parse_wiz_html(note_extract_dir: Path, title: str) -> tuple[str, list[WizInt
     images: list[WizImage] = []
     image_match = re.finditer(RE_IMAGE_OUTERHTML, html_body, re.IGNORECASE)
     for image in image_match:
-        img = WizImage(image.group(0), image.group(1), note_extract_dir)
-        images.append(img)
+        img = WizImage(image.group(0), image.group(1), note_extract_dir, strict_check=strict_check)
+        # 如果 strict_check=False 且文件不存在，WizImage 会记录警告但不抛出异常
+        # 此时 img.file 不存在，我们只添加存在的图片
+        if img.file.exists():
+            images.append(img)
     return html_body, internal_links, images
 
 
@@ -216,4 +224,51 @@ def convert_joplin_body(body: str, is_markdown: bool, internal_links: list[Jopli
         body = get_text(body)
     if insert_to_end:
         body += gen_end_ilstr(is_markdown, insert_to_end)
+    return body
+
+
+def convert_obsidian_body(
+    body: str,
+    is_markdown: bool,
+    internal_links: list,
+    attachments: list,
+    images: list,
+    note_title: str
+) -> str:
+    """ 将为知笔记中的 body 转换成 Obsidian 格式
+    """
+    # 创建附件和图片的映射（guid -> 文件名）
+    attachment_map: dict[str, str] = {att.guid: att.name for att in attachments}
+    image_map: dict[str, str] = {img.src: Path(img.src).name for img in images}
+
+    # 处理内部链接
+    for wil in internal_links:
+        if not wil.outerhtml:
+            continue
+
+        if wil.link_type == 'open_document':
+            # 文档链接转换为双向链接 [[笔记标题]]
+            obsidian_link = f'[[{wil.title}]]'
+            body = body.replace(wil.outerhtml, obsidian_link)
+        elif wil.link_type == 'open_attachment':
+            # 附件链接转换为 ![[附件名]]
+            attachment_name = attachment_map.get(wil.guid, wil.title)
+            obsidian_link = f'![[{attachment_name}]]'
+            body = body.replace(wil.outerhtml, obsidian_link)
+
+    # 处理图片（在 HTML 中的图片标签）
+    for image in images:
+        if image.outerhtml:
+            image_name = Path(image.src).name
+            obsidian_link = f'![[{image_name}]]'
+            body = body.replace(image.outerhtml, obsidian_link)
+
+    # 无论标题是否以 .md 结尾，都将 HTML 转换为 Markdown
+    # 因为为知笔记的 HTML 格式太难编辑，转换为 Markdown 更便于编辑
+    # HTML 转 Markdown（使用 inscriptis）
+    body = get_text(body)
+
+    # 处理外部链接：保持原样（不转换 http/https 链接）
+    # 外部链接在 Markdown 中已经是标准格式，不需要额外处理
+
     return body

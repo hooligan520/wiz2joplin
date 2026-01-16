@@ -149,17 +149,27 @@ class WizDocument(object):
         if self.note_file is None or not self.note_file.exists():
             raise FileNotFoundError(f'找不到 note 文件 {self.note_file}！')
 
-    def resolve_attachments(self, attachments: list[WizAttachment]) -> None:
+    def resolve_attachments(self, attachments: list[WizAttachment], strict_check: bool = True) -> None:
         self.attachments = attachments
         if len(self.attachments) != self.attachment_count:
-            raise ValueError(f'附件数量不匹配 {len(self.attachments)} != {self.attachment_count}！')
+            if strict_check:
+                raise ValueError(f'附件数量不匹配 {len(self.attachments)} != {self.attachment_count}！')
+            else:
+                logger.warning(f'文档 {self.title} 附件数量不匹配 {len(self.attachments)} != {self.attachment_count}，继续处理。')
         # 检测所有附件文件是否存在
-        try:
-            for attach in self.attachments:
-                attach.check_file()
-        except FileNotFoundError as e:
-            msg = f'{e!s}，请检查文档 {self.title}'
-            raise FileNotFoundError(msg)
+        missing_attachments = []
+        for attach in self.attachments:
+            if not attach.file.exists():
+                if strict_check:
+                    msg = f'找不到文件 {attach.file_name}，请检查文档 {self.title}'
+                    raise FileNotFoundError(msg)
+                else:
+                    missing_attachments.append(attach)
+                    logger.warning(f'文档 {self.title} 的附件 {attach.name} 文件不存在: {attach.file_name}，将跳过该附件。')
+        
+        # 移除缺失的附件
+        if missing_attachments and not strict_check:
+            self.attachments = [att for att in self.attachments if att not in missing_attachments]
         
     def resolve_tags(self, tags: list[WizTag]) -> None:
         self.tags = tags
@@ -180,26 +190,28 @@ class WizDocument(object):
             raise BadZipFile(msg)
             # logger.info(msg)
 
-    def _parse_wiz_note(self) -> None:
+    def _parse_wiz_note(self, strict_check: bool = True) -> None:
         """ 解析 index.html 文件
+        :param strict_check: 是否严格检查图片文件存在性，默认 True。设为 False 时，缺失图片只记录警告不中断
         """
         if self.note_extract_dir is None:
             raise FileNotFoundError(f'请先解压缩文档 {self.note_file!s} |{self.title}|')
 
-        self.body, self.internal_links, self.images = parse_wiz_html(self.note_extract_dir, self.title)
+        self.body, self.internal_links, self.images = parse_wiz_html(self.note_extract_dir, self.title, strict_check=strict_check)
 
-    def resolve_body(self) -> None:
+    def resolve_body(self, strict_check: bool = True) -> None:
         """ 解压文档压缩包，解析文档正文中的图像文件，将其转换为 WizImage
         将正文存入 body
+        :param strict_check: 是否严格检查图片文件存在性，默认 True。设为 False 时，缺失图片只记录警告不中断
         """
         self.check_note_file()
         self._extract_zip()
-        self._parse_wiz_note()
+        self._parse_wiz_note(strict_check=strict_check)
 
-    def resolve(self, attachments: list[WizAttachment], tags: list[WizTag]) -> None:
-        self.resolve_attachments(attachments)
+    def resolve(self, attachments: list[WizAttachment], tags: list[WizTag], strict_check: bool = True) -> None:
+        self.resolve_attachments(attachments, strict_check=strict_check)
         self.resolve_tags(tags)
-        self.resolve_body()
+        self.resolve_body(strict_check=strict_check)
 
     def __repr__(self):
         return f'<w2j.wiz.WizDocument {self.note_file.resolve()} |{self.title}| tags: {len(self.tags)} attachments: {len(self.attachments)} markdown: {self.is_markdown}>'
@@ -429,8 +441,9 @@ class WizStorage(object):
             attachments_in_document[attachment.doc_guid].append(attachment)
         return attachments, attachments_in_document
 
-    def build_documents(self) -> list[WizDocument]:
+    def build_documents(self, strict_check: bool = True) -> list[WizDocument]:
         """ 根据数据库内容构建所有的 document 列表
+        :param strict_check: 是否严格检查附件文件存在性，默认 True
         """
         rows = self.data_dir._get_all_document()
 
@@ -447,7 +460,8 @@ class WizStorage(object):
             document = WizDocument(*row, self.data_dir.notes_dir, self.documents_dir, check_file=True)
             document.resolve(
                 self.attachments_in_document.get(document.guid, []),
-                self.tags_in_document.get(document.guid, [])
+                self.tags_in_document.get(document.guid, []),
+                strict_check=strict_check
             )
             documents.append(document)
         return documents
@@ -471,11 +485,12 @@ class WizStorage(object):
         document.resolve(attachments, tags)
         return document
 
-    def resolve(self) -> None:
+    def resolve(self, strict_check: bool = True) -> None:
         """ 解析所有文档并保存相关数据
         调用此方法后，所有数据安全并可用
+        :param strict_check: 是否严格检查附件文件存在性，默认 True。设为 False 时，缺失附件只记录警告不中断
         """
-        self.documents = self.build_documents()
+        self.documents = self.build_documents(strict_check=strict_check)
         
     def clear(self) -> None:
         """ 删除解压的临时文件夹
