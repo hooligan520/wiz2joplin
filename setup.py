@@ -26,7 +26,7 @@ def find_requires(*file_paths):
     return require_file.splitlines()
 
 def static_requires():
-    return ['idna==2.10', 'chardet', 'httpx', 'inscriptis']
+    return ['idna==2.10', 'chardet', 'httpx', 'inscriptis', 'html2text']
 
 classifiers = [
     'Programming Language :: Python :: 3.9',

@@ -125,13 +125,17 @@ class WizDocument(object):
     # 包含在为知笔记文档中的内部链接，需要在文档征文中使用正则提取
     internal_links: list[WizInternalLink] = []
 
-    def __init__(self, guid: str, title: str, location: str, url: str, created: str, modified: str, attachment_count: int, notes_dir: Path, documents_dir: Path, check_file: bool = False) -> None:
+    # 文档类型
+    document_type: int = 0
+
+    def __init__(self, guid: str, title: str, location: str, url: str, created: str, modified: str, attachment_count: int, notes_dir: Path, documents_dir: Path, check_file: bool = False, document_type: int = 0) -> None:
         self.guid = guid
         self.location = location
         self.url = url
         self.created = tots(created)
         self.modified = tots(modified)
         self.attachment_count = attachment_count
+        self.document_type = document_type
 
         self.documents_dir = documents_dir
 
@@ -244,7 +248,7 @@ class DataDir(object):
         cur = conn.cursor()
 
         sql = '''SELECT
-        DOCUMENT_GUID, DOCUMENT_TITLE, DOCUMENT_LOCATION, DOCUMENT_URL, DT_CREATED, DT_MODIFIED, DOCUMENT_ATTACHEMENT_COUNT
+        DOCUMENT_GUID, DOCUMENT_TITLE, DOCUMENT_LOCATION, DOCUMENT_URL, DT_CREATED, DT_MODIFIED, DOCUMENT_ATTACHEMENT_COUNT, DOCUMENT_TYPE
         FROM WIZ_DOCUMENT
         WHERE DOCUMENT_GUID = ?
         '''
@@ -279,7 +283,7 @@ class DataDir(object):
         """
         conn = sqlite3.connect(self.index_db)
         cur = conn.cursor()
-        cur.execute('SELECT DOCUMENT_GUID, DOCUMENT_TITLE, DOCUMENT_LOCATION, DOCUMENT_URL, DT_CREATED, DT_MODIFIED, DOCUMENT_ATTACHEMENT_COUNT FROM WIZ_DOCUMENT')
+        cur.execute('SELECT DOCUMENT_GUID, DOCUMENT_TITLE, DOCUMENT_LOCATION, DOCUMENT_URL, DT_CREATED, DT_MODIFIED, DOCUMENT_ATTACHEMENT_COUNT, DOCUMENT_TYPE FROM WIZ_DOCUMENT')
         rows = cur.fetchall()
         conn.close()
         return rows
@@ -457,7 +461,12 @@ class WizStorage(object):
 
         documents: list[WizDocument] = []
         for row in rows:
-            document = WizDocument(*row, self.data_dir.notes_dir, self.documents_dir, check_file=True)
+            # row: (guid, title, location, url, created, modified, attachment_count, document_type)
+            document = WizDocument(
+                row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+                self.data_dir.notes_dir, self.documents_dir, check_file=True,
+                document_type=row[7] if len(row) > 7 else 0
+            )
             document.resolve(
                 self.attachments_in_document.get(document.guid, []),
                 self.tags_in_document.get(document.guid, []),
@@ -481,7 +490,13 @@ class WizStorage(object):
         for row in tag_rows:
             tags.append(WizTag(*row))
 
-        document = WizDocument(*document_row, self.data_dir.notes_dir, self.documents_dir, check_file=True)
+        # document_row: (guid, title, location, url, created, modified, attachment_count, document_type)
+        document = WizDocument(
+            document_row[0], document_row[1], document_row[2], document_row[3],
+            document_row[4], document_row[5], document_row[6],
+            self.data_dir.notes_dir, self.documents_dir, check_file=True,
+            document_type=document_row[7] if len(document_row) > 7 else 0
+        )
         document.resolve(attachments, tags)
         return document
 

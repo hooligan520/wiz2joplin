@@ -42,6 +42,7 @@ if os.environ.get('W2J_TEST_MODE') != '1':
     parser.add_argument('--joplin-host', '-n', type=str, metavar='JOPLIN_HOST', default='127.0.0.1', help='设置您的 Joplin Web Clipper 服务的主机地址，默认为 127.0.0.1')
     parser.add_argument('--joplin-port', '-p', type=int, metavar='JOPLIN_PORT', default=41184, help='设置您的 Joplin Web Clipper 服务的端口，默认为 41184')
     parser.add_argument('--obsidian-vault', type=str, metavar='OBSIDIAN_VAULT', help='设置 Obsidian Vault 路径。当 --target=obsidian 时必需')
+    parser.add_argument('--enable-resume', action='store_true', help='启用断点续传功能。启用后，已迁移的笔记将被跳过，避免重复处理。默认关闭。')
     parser.add_argument('--location', '-l', type=str, metavar='LOCATION', help='转换 WizNote 的位置，例如 /My Notes/。如果使用 --all 参数，则跳过 --location 参数。')
     parser.add_argument('--location-children', '-r', action='store_true', help='与 --location 参数一起使用，转换 --location 的所有子位置。')
     parser.add_argument('--all', '-a', action='store_true', help='转换 WizNote 的所有文档。')
@@ -84,7 +85,7 @@ def main() -> None:
             print('错误：当 --target=obsidian 时，必须提供 --obsidian-vault 参数')
             return
         vault_path = Path(args.obsidian_vault).expanduser()
-        ad = adapter.ObsidianAdapter(ws, vault_path, work_dir=output_dir)
+        ad = adapter.ObsidianAdapter(ws, vault_path, work_dir=output_dir, enable_resume=args.enable_resume)
         try:
             if args.all:
                 ad.sync_all()

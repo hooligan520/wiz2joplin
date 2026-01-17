@@ -3,3 +3,4 @@ chardet
 httpx
 inscriptis
 PyYAML
+html2text
