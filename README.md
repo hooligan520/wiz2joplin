@@ -124,3 +124,10 @@ w2j --target obsidian --obsidian-vault ~/Documents/ObsidianVault -o ~/w2o -w ~/.
 - [WizNote 为知笔记 macOS 本地文件夹分析](https://blog.zengrong.net/post/analysis-of-wiznote/)
 - [使用腾讯云对象存储(COS)实现Joplin同步](https://blog.zengrong.net/post/joplin-sync-use-cos/)
 - [配置 Joplin Server 实现同步](https://blog.zengrong.net/post/joplin-server-config/)
+
+## 贡献者
+
+- [zrong](https://github.com/zrong) - 原始项目作者，实现了从 WizNote 到 Joplin 的迁移功能
+- [hooligan520](https://github.com/hooligan520) - 添加了 Obsidian 迁移支持和断点续传功能
+
+**本项目从 [zrong/wiz2joplin](https://github.com/zrong/wiz2joplin) fork 而来，在原有基础上增加了对 Obsidian 的支持。**
