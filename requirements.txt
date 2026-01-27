@@ -2,3 +2,4 @@ idna==2.10
 chardet
 httpx
 inscriptis
+PyYAML
