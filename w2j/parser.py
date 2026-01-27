@@ -8,6 +8,7 @@ from os import link
 from pathlib import Path
 import re
 import chardet
+from html import unescape
 from inscriptis import get_text
 import html2text
 from w2j import logger
@@ -266,18 +267,46 @@ def convert_obsidian_body(
 
     # 根据笔记类型选择不同的 HTML 转 Markdown 方法
     if is_markdown:
-        # .md 结尾的笔记：使用 inscriptis 转换，然后处理换行符
-        # 因为为知笔记的 HTML 格式太难编辑，转换为 Markdown 更便于编辑
-        body = get_text(body)
-        # 对于 .md 结尾的笔记，为知笔记存储时会增加换行符，需要将两个换行符转换成一个换行符
-        body = re.sub(r'\n\n', '\n', body)
+        # .md 结尾的笔记：为知笔记把每一行 Markdown 都包裹在 <p> 标签中
+        # 直接提取 <p> 标签内容，避免产生多余空行
+        # 移除HTML注释
+        body = re.sub(r'<!--.*?-->', '', body, flags=re.DOTALL)
+
+        # 提取所有 <p>...</p> 的内容
+        p_pattern = r'<p>(.*?)</p>'
+        matches = re.findall(p_pattern, body, flags=re.DOTALL)
+
+        lines = []
+        for match in matches:
+            # 移除 <br> 和 <br/> 标签
+            text = re.sub(r'<br\s*/?>', '', match)
+            # 移除其他HTML标签（如 <span>）
+            text = re.sub(r'<[^>]+>', '', text)
+            # 解码 HTML 实体
+            text = unescape(text)
+            # 替换不间断空格 (\xa0) 为普通空格
+            text = text.replace('\xa0', ' ')
+            # 移除行尾空白
+            text = text.rstrip()
+
+            # 如果内容为空，说明是原始 Markdown 中的空行（通常是 <p><br></p>）
+            if not text:
+                lines.append('')
+            else:
+                lines.append(text)
+
+        body = '\n'.join(lines)
     else:
         # 非 .md 结尾的笔记：使用 html2text 转换
         h = html2text.HTML2Text()
         h.ignore_links = False  # 保留链接
         h.ignore_images = False  # 保留图片
+        h.body_width = 0  # 禁用自动换行
         body = h.handle(body)
-        body = re.sub(r'\n\n', '\n', body)
+        # 限制连续换行符为最多2个（即最多一个空行）
+        body = re.sub(r'\n{3,}', '\n\n', body)
+        # 移除行尾空白
+        body = '\n'.join(line.rstrip() for line in body.split('\n'))
 
     # 处理外部链接：保持原样（不转换 http/https 链接）
     # 外部链接在 Markdown 中已经是标准格式，不需要额外处理
