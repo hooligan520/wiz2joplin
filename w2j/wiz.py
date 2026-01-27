@@ -178,15 +178,19 @@ class WizDocument(object):
     def resolve_tags(self, tags: list[WizTag]) -> None:
         self.tags = tags
 
-    def _extract_zip(self) -> None:
+    def _extract_zip(self, force: bool = False) -> None:
         """ 解压缩当前文档的 zip 文件到 work_dir，以 guid 为子文件夹名称
+        :param force: 是否强制重新解压，即使目标文件夹已存在
         """
         self.note_extract_dir = self.documents_dir.joinpath(self.guid)
-        # 如果目标文件夹已经存在，就不解压了
-        if self.note_extract_dir.exists():
-            # logger.info(f'{self.note_extract_dir!s} |{self.title}| 已经存在，跳过。')
+        # 如果目标文件夹已经存在且不强制重新解压，就不解压了
+        if self.note_extract_dir.exists() and not force:
             return
         try:
+            import shutil
+            # 如果要强制重新解压，先删除旧目录
+            if force and self.note_extract_dir.exists():
+                shutil.rmtree(self.note_extract_dir)
             zip_file = ZipFile(self.note_file)
             zip_file.extractall(self.note_extract_dir)
         except BadZipFile as e:
@@ -203,19 +207,20 @@ class WizDocument(object):
 
         self.body, self.internal_links, self.images = parse_wiz_html(self.note_extract_dir, self.title, strict_check=strict_check)
 
-    def resolve_body(self, strict_check: bool = True) -> None:
+    def resolve_body(self, strict_check: bool = True, force: bool = False) -> None:
         """ 解压文档压缩包，解析文档正文中的图像文件，将其转换为 WizImage
         将正文存入 body
         :param strict_check: 是否严格检查图片文件存在性，默认 True。设为 False 时，缺失图片只记录警告不中断
+        :param force: 是否强制重新解压，即使目标文件夹已存在
         """
         self.check_note_file()
-        self._extract_zip()
+        self._extract_zip(force=force)
         self._parse_wiz_note(strict_check=strict_check)
 
-    def resolve(self, attachments: list[WizAttachment], tags: list[WizTag], strict_check: bool = True) -> None:
+    def resolve(self, attachments: list[WizAttachment], tags: list[WizTag], strict_check: bool = True, force: bool = False) -> None:
         self.resolve_attachments(attachments, strict_check=strict_check)
         self.resolve_tags(tags)
-        self.resolve_body(strict_check=strict_check)
+        self.resolve_body(strict_check=strict_check, force=force)
 
     def __repr__(self):
         return f'<w2j.wiz.WizDocument {self.note_file.resolve()} |{self.title}| tags: {len(self.tags)} attachments: {len(self.attachments)} markdown: {self.is_markdown}>'

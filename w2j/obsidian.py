@@ -56,17 +56,26 @@ class ObsidianConvertUtil:
     def close(self):
         self.conn.close()
 
-    def is_note_migrated(self, guid: str) -> bool:
-        """ 检查笔记是否已迁移
+    def is_note_up_to_date(self, guid: str, modified_time: int) -> tuple[bool, bool]:
+        """ 检查笔记是否已迁移且为最新版本
+        返回: (is_up_to_date, exists)
+        - is_up_to_date: 如果笔记存在且 modified_time 相同，返回 True（已是最新，跳过）
+        - exists: 笔记是否存在
         """
-        sql = 'SELECT count(*) FROM note WHERE note_guid=?;'
-        count = self.conn.execute(sql, (guid, )).fetchone()[0]
-        return count > 0
+        sql = 'SELECT modified_time FROM note WHERE note_guid=?;'
+        result = self.conn.execute(sql, (guid, )).fetchone()
+        if result is None:
+            # 笔记不存在，需要迁移
+            return (False, False)
+        # 比较 modified_time
+        db_modified_time = result[0]
+        is_up_to_date = db_modified_time == modified_time
+        return (is_up_to_date, True)
 
     def add_note(self, document: WizDocument, file_path: Path) -> None:
-        """ 记录已迁移的笔记
+        """ 记录已迁移的笔记（如果已存在则更新）
         """
-        sql = 'INSERT INTO note (note_guid, file_path, title, location, created_time, modified_time) VALUES (?, ?, ?, ?, ?, ?);'
+        sql = 'INSERT OR REPLACE INTO note (note_guid, file_path, title, location, created_time, modified_time) VALUES (?, ?, ?, ?, ?, ?);'
         self.conn.execute(sql, (
             document.guid,
             str(file_path),
@@ -85,14 +94,27 @@ class ObsidianStorage:
     work_dir: Path
     cu: ObsidianConvertUtil
     enable_resume: bool
+    ws: WizStorage  # WizStorage 引用，用于需要更新时重新解析文档
 
-    def __init__(self, vault_path: Path, work_dir: Path, enable_resume: bool = False) -> None:
+    # 统计信息
+    stats: dict[str, int]
+
+    def __init__(self, vault_path: Path, work_dir: Path, enable_resume: bool = True, ws: WizStorage = None) -> None:
         self.vault_path = Path(vault_path).expanduser()
         if not self.vault_path.exists():
             self.vault_path.mkdir(parents=True)
         self.work_dir = work_dir
         self.enable_resume = enable_resume
+        self.ws = ws
         self.cu = ObsidianConvertUtil(self.work_dir.joinpath('w2o.sqlite'))
+        # 初始化统计信息
+        self.stats = {
+            'total': 0,
+            'migrated': 0,      # 新迁移的笔记
+            'updated': 0,        # 更新的笔记（已存在但 modified_time 不同）
+            'skipped': 0,        # 跳过的笔记（已是最新版本）
+            'failed': 0          # 失败的笔记
+        }
 
     def close(self):
         self.cu.close()
@@ -199,10 +221,24 @@ class ObsidianStorage:
         """
         logger.info(f'正在处理笔记: {document.guid}|{document.document_type}|{document.title}')
 
-        # 检查是否已迁移（仅在启用断点续传时）
-        if self.enable_resume and self.cu.is_note_migrated(document.guid):
-            logger.warning(f'笔记 {document.guid} |{document.title}| 已经迁移，跳过。')
-            return
+        # 检查是否已迁移且为最新版本（仅在启用断点续传时）
+        if self.enable_resume:
+            is_up_to_date, exists = self.cu.is_note_up_to_date(document.guid, document.modified)
+            if is_up_to_date:
+                logger.info(f'笔记 {document.guid} |{document.title}| 已是最新版本，跳过。')
+                self.stats['skipped'] += 1
+                return
+            elif exists:
+                # 笔记存在但已更新，需要重新迁移
+                # 强制重新解析文档内容，以获取最新的内容
+                logger.info(f'笔记 {document.guid} |{document.title}| 已更新，重新解析文档内容。')
+                self.stats['updated'] += 1
+                if self.ws is not None:
+                    # 从 WizStorage 中获取附件和标签列表
+                    attachments = self.ws.attachments_in_document.get(document.guid, [])
+                    tags = self.ws.tags_in_document.get(document.guid, [])
+                    # 强制重新解析（force=True）
+                    document.resolve(attachments, tags, strict_check=False, force=True)
 
         # 获取文件路径
         note_file = self._get_note_file_path(document)
@@ -244,19 +280,26 @@ class ObsidianStorage:
         # 记录到数据库（仅在启用断点续传时）
         if self.enable_resume:
             self.cu.add_note(document, note_file)
+        
+        # 统计新迁移的笔记（不包括更新的）
+        if not self.enable_resume or not self.cu.is_note_up_to_date(document.guid, document.modified)[1]:
+            self.stats['migrated'] += 1
 
         logger.info(f'笔记已保存: {note_file}')
 
     def sync_all(self, documents: list[WizDocument]) -> None:
         """ 同步所有笔记
         """
+        self.stats['total'] = len(documents)
         logger.info(f'开始迁移 {len(documents)} 篇笔记到 Obsidian。')
         for document in documents:
             try:
                 self.sync_note(document)
             except Exception as e:
                 logger.error(f'迁移笔记失败 {document.guid}|{document.title}|: {e}')
+                self.stats['failed'] += 1
                 continue
+        self._print_stats()
 
     def sync_by_location(self, documents: list[WizDocument], location: str, with_children: bool = True) -> None:
         """ 同步指定 location 的笔记
@@ -271,6 +314,7 @@ class ObsidianStorage:
 
         logger.info(f'处理以下 location： {locations}')
         waiting_for_sync = [doc for doc in documents if doc.location in locations]
+        self.stats['total'] = len(waiting_for_sync)
         logger.info(f'有 {len(waiting_for_sync)} 篇笔记等待同步。')
 
         for document in waiting_for_sync:
@@ -278,4 +322,31 @@ class ObsidianStorage:
                 self.sync_note(document)
             except Exception as e:
                 logger.error(f'迁移笔记失败 {document.guid}|{document.title}|: {e}')
+                self.stats['failed'] += 1
                 continue
+        self._print_stats()
+    
+    def _print_stats(self) -> None:
+        """ 打印迁移统计信息（同时输出到控制台和日志）
+        """
+        stats_msg = f"""
+{'=' * 60}
+迁移统计信息:
+  总笔记数: {self.stats["total"]}
+  新迁移: {self.stats["migrated"]}
+  已更新: {self.stats["updated"]}
+  已跳过: {self.stats["skipped"]}
+  失败: {self.stats["failed"]}
+{'=' * 60}
+"""
+        # 输出到控制台
+        print(stats_msg)
+        # 同时记录到日志
+        logger.info('=' * 60)
+        logger.info('迁移统计信息:')
+        logger.info(f'  总笔记数: {self.stats["total"]}')
+        logger.info(f'  新迁移: {self.stats["migrated"]}')
+        logger.info(f'  已更新: {self.stats["updated"]}')
+        logger.info(f'  已跳过: {self.stats["skipped"]}')
+        logger.info(f'  失败: {self.stats["failed"]}')
+        logger.info('=' * 60)

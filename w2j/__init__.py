@@ -15,9 +15,10 @@ __version__ = '0.4'
 
 work_dir = Path.cwd()
 logger = logging.Logger('w2j')
+logger.setLevel(logging.INFO)
 log_file = work_dir.joinpath('w2j.log')
 log_handler = logging.FileHandler(log_file)
-log_handler.setFormatter(logging.Formatter('{asctime} - {funcName} - {message}', style='{'))
+log_handler.setFormatter(logging.Formatter('{asctime} - {levelname} - {funcName} - {message}', style='{', datefmt='%Y-%m-%d %H:%M:%S'))
 # logger.addHandler(logging.StreamHandler(sys.stderr))
 logger.addHandler(log_handler)
 
@@ -42,7 +43,7 @@ if os.environ.get('W2J_TEST_MODE') != '1':
     parser.add_argument('--joplin-host', '-n', type=str, metavar='JOPLIN_HOST', default='127.0.0.1', help='设置您的 Joplin Web Clipper 服务的主机地址，默认为 127.0.0.1')
     parser.add_argument('--joplin-port', '-p', type=int, metavar='JOPLIN_PORT', default=41184, help='设置您的 Joplin Web Clipper 服务的端口，默认为 41184')
     parser.add_argument('--obsidian-vault', type=str, metavar='OBSIDIAN_VAULT', help='设置 Obsidian Vault 路径。当 --target=obsidian 时必需')
-    parser.add_argument('--enable-resume', action='store_true', help='启用断点续传功能。启用后，已迁移的笔记将被跳过，避免重复处理。默认关闭。')
+    parser.add_argument('--disable-resume', action='store_true', help='禁用断点续传功能。默认开启断点续传，已迁移且未更新的笔记将被跳过，避免重复处理。')
     parser.add_argument('--location', '-l', type=str, metavar='LOCATION', help='转换 WizNote 的位置，例如 /My Notes/。如果使用 --all 参数，则跳过 --location 参数。')
     parser.add_argument('--location-children', '-r', action='store_true', help='与 --location 参数一起使用，转换 --location 的所有子位置。')
     parser.add_argument('--all', '-a', action='store_true', help='转换 WizNote 的所有文档。')
@@ -75,7 +76,9 @@ def main() -> None:
     logger.removeHandler(log_file)
     newlog_file = output_dir.joinpath('w2j.log')
     print(f'请查看 [{newlog_file.resolve()}] 以检查转换状态。')
-    logger.addHandler(logging.FileHandler(newlog_file))
+    new_log_handler = logging.FileHandler(newlog_file)
+    new_log_handler.setFormatter(logging.Formatter('{asctime} - {levelname} - {funcName} - {message}', style='{', datefmt='%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(new_log_handler)
 
     ws = wiz.WizStorage(args.wiz_user, wiznote_dir, is_group_storage=False, work_dir=output_dir)
 
@@ -85,7 +88,7 @@ def main() -> None:
             print('错误：当 --target=obsidian 时，必须提供 --obsidian-vault 参数')
             return
         vault_path = Path(args.obsidian_vault).expanduser()
-        ad = adapter.ObsidianAdapter(ws, vault_path, work_dir=output_dir, enable_resume=args.enable_resume)
+        ad = adapter.ObsidianAdapter(ws, vault_path, work_dir=output_dir, enable_resume=not args.disable_resume)
         try:
             if args.all:
                 ad.sync_all()

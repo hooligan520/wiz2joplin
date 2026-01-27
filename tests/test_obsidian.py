@@ -136,19 +136,24 @@ def test_convert_util_init(temp_work_dir):
     cu.close()
 
 
-def test_convert_util_is_note_migrated(temp_work_dir, sample_document):
-    """ 测试检查笔记是否已迁移
+def test_convert_util_is_note_up_to_date(temp_work_dir, sample_document):
+    """ 测试检查笔记是否已迁移且为最新版本
     """
     db_file = temp_work_dir / 'w2o.sqlite'
     cu = ObsidianConvertUtil(db_file)
     
-    assert not cu.is_note_migrated(sample_document.guid)
+    # 初始状态，笔记未迁移
+    assert not cu.is_note_up_to_date(sample_document.guid, sample_document.modified)
     
     # 添加笔记记录
     note_file = temp_work_dir / 'test.md'
     cu.add_note(sample_document, note_file)
     
-    assert cu.is_note_migrated(sample_document.guid)
+    # 笔记已迁移且时间相同
+    assert cu.is_note_up_to_date(sample_document.guid, sample_document.modified)
+    
+    # 笔记已迁移但时间不同（需要更新）
+    assert not cu.is_note_up_to_date(sample_document.guid, sample_document.modified + 1000)
     cu.close()
 
 

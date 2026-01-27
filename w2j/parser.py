@@ -277,6 +277,7 @@ def convert_obsidian_body(
         h.ignore_links = False  # 保留链接
         h.ignore_images = False  # 保留图片
         body = h.handle(body)
+        body = re.sub(r'\n\n', '\n', body)
 
     # 处理外部链接：保持原样（不转换 http/https 链接）
     # 外部链接在 Markdown 中已经是标准格式，不需要额外处理
