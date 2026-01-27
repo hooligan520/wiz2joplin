@@ -501,7 +501,7 @@ class JoplinAdapter(object):
     def _sync_note(self, document: WizDocument) -> JoplinNote:
         """ 同步一篇笔记
         """
-        logger.info(f'正在处理 document {document.guid}|{document.title}|。')
+        logger.info(f'正在处理笔记: {document.guid}|{document.document_type}|{document.title}')
         note_id = tojoplinid(document.guid)
         jn: JoplinNote = self.cu.get_note(note_id)
         if jn is not None:
@@ -607,7 +607,7 @@ class ObsidianAdapter(object):
     obsidian_storage: 'ObsidianStorage'
     work_dir: Path
 
-    def __init__(self, ws: WizStorage, vault_path: Path, work_dir: Path=None) -> None:
+    def __init__(self, ws: WizStorage, vault_path: Path, work_dir: Path=None, enable_resume: bool = False) -> None:
         from w2j.obsidian import ObsidianStorage
         self.ws = ws
         self.work_dir = work_dir or default_work_dir
@@ -616,7 +616,7 @@ class ObsidianAdapter(object):
         self.ws.resolve(strict_check=False)
 
         # 创建 Obsidian 存储
-        self.obsidian_storage = ObsidianStorage(vault_path, self.work_dir)
+        self.obsidian_storage = ObsidianStorage(vault_path, self.work_dir, enable_resume=enable_resume)
 
     def sync_note_by_location(self, location: str, with_children: bool=True) -> None:
         """ 同步指定为知笔记目录中所有的笔记

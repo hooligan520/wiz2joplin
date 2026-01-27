@@ -92,12 +92,12 @@ def test_preserve_external_links():
 
 
 def test_all_notes_conversion():
-    """ 测试所有笔记都进行 HTML 到 Markdown 转换
+    """ 测试所有笔记都进行 HTML 到 Markdown 转换，但使用不同的转换方法
     """
     # 为知笔记中所有内容都是 HTML 格式存储，无论标题是否以 .md 结尾
     body = '<h1>标题</h1><p>这是 <strong>内容</strong>。</p>'
     
-    # 测试标题以 .md 结尾的笔记
+    # 测试标题以 .md 结尾的笔记（使用 inscriptis）
     result1 = convert_obsidian_body(body, True, [], [], [], 'test')
     # HTML 应该被转换为 Markdown 格式
     assert '标题' in result1
@@ -105,8 +105,10 @@ def test_all_notes_conversion():
     # HTML 标签应该被移除
     assert '<h1>' not in result1
     assert '<p>' not in result1
+    # inscriptis 转换后的格式较简单，不包含 Markdown 标记
+    assert '#' not in result1  # inscriptis 不会生成 # 标题格式
     
-    # 测试标题不以 .md 结尾的笔记（现在也会转换）
+    # 测试标题不以 .md 结尾的笔记（使用 html2text）
     result2 = convert_obsidian_body(body, False, [], [], [], 'test')
     # HTML 也应该被转换为 Markdown 格式
     assert '标题' in result2
@@ -114,6 +116,9 @@ def test_all_notes_conversion():
     # HTML 标签应该被移除
     assert '<h1>' not in result2
     assert '<p>' not in result2
+    # html2text 会生成标准的 Markdown 格式
+    assert '#' in result2  # html2text 会生成 # 标题格式
+    assert '**' in result2  # html2text 会生成 **粗体** 格式
 
 
 def test_multiple_links_conversion(sample_attachments):

@@ -84,12 +84,14 @@ class ObsidianStorage:
     vault_path: Path
     work_dir: Path
     cu: ObsidianConvertUtil
+    enable_resume: bool
 
-    def __init__(self, vault_path: Path, work_dir: Path) -> None:
+    def __init__(self, vault_path: Path, work_dir: Path, enable_resume: bool = False) -> None:
         self.vault_path = Path(vault_path).expanduser()
         if not self.vault_path.exists():
             self.vault_path.mkdir(parents=True)
         self.work_dir = work_dir
+        self.enable_resume = enable_resume
         self.cu = ObsidianConvertUtil(self.work_dir.joinpath('w2o.sqlite'))
 
     def close(self):
@@ -195,10 +197,10 @@ class ObsidianStorage:
     def sync_note(self, document: WizDocument) -> None:
         """ 同步一篇笔记到 Obsidian
         """
-        logger.info(f'正在处理 document {document.guid}|{document.title}|。')
+        logger.info(f'正在处理笔记: {document.guid}|{document.document_type}|{document.title}')
 
-        # 检查是否已迁移
-        if self.cu.is_note_migrated(document.guid):
+        # 检查是否已迁移（仅在启用断点续传时）
+        if self.enable_resume and self.cu.is_note_migrated(document.guid):
             logger.warning(f'笔记 {document.guid} |{document.title}| 已经迁移，跳过。')
             return
 
@@ -239,8 +241,9 @@ class ObsidianStorage:
         modified_time = document.modified / 1000
         os.utime(note_file, (created_time, modified_time))
 
-        # 记录到数据库
-        self.cu.add_note(document, note_file)
+        # 记录到数据库（仅在启用断点续传时）
+        if self.enable_resume:
+            self.cu.add_note(document, note_file)
 
         logger.info(f'笔记已保存: {note_file}')
 

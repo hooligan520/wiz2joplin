@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import chardet
 from inscriptis import get_text
+import html2text
 from w2j import logger
 
 
@@ -263,10 +264,19 @@ def convert_obsidian_body(
             obsidian_link = f'![[{image_name}]]'
             body = body.replace(image.outerhtml, obsidian_link)
 
-    # 无论标题是否以 .md 结尾，都将 HTML 转换为 Markdown
-    # 因为为知笔记的 HTML 格式太难编辑，转换为 Markdown 更便于编辑
-    # HTML 转 Markdown（使用 inscriptis）
-    body = get_text(body)
+    # 根据笔记类型选择不同的 HTML 转 Markdown 方法
+    if is_markdown:
+        # .md 结尾的笔记：使用 inscriptis 转换，然后处理换行符
+        # 因为为知笔记的 HTML 格式太难编辑，转换为 Markdown 更便于编辑
+        body = get_text(body)
+        # 对于 .md 结尾的笔记，为知笔记存储时会增加换行符，需要将两个换行符转换成一个换行符
+        body = re.sub(r'\n\n', '\n', body)
+    else:
+        # 非 .md 结尾的笔记：使用 html2text 转换
+        h = html2text.HTML2Text()
+        h.ignore_links = False  # 保留链接
+        h.ignore_images = False  # 保留图片
+        body = h.handle(body)
 
     # 处理外部链接：保持原样（不转换 http/https 链接）
     # 外部链接在 Markdown 中已经是标准格式，不需要额外处理
