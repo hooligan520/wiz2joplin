@@ -303,6 +303,11 @@ def convert_obsidian_body(
         h.ignore_images = False  # 保留图片
         h.body_width = 0  # 禁用自动换行
         body = h.handle(body)
+
+        # 修复标题格式：html2text 在处理嵌套标签时会将标题标记和文本分成两行
+        # 例如 "# \n\n标题文本" -> "# 标题文本"
+        body = re.sub(r'^(#{1,6})\s*\n+', r'\1 ', body, flags=re.MULTILINE)
+
         # 限制连续换行符为最多2个（即最多一个空行）
         body = re.sub(r'\n{3,}', '\n\n', body)
         # 移除行尾空白
