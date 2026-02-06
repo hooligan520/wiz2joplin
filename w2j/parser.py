@@ -333,14 +333,23 @@ def convert_obsidian_body(
                 # 检查空行后面是否还有内容
                 if i + 2 < len(lines) and lines[i + 2].strip():
                     next_line = lines[i + 2].strip()
-                    # 如果下一行不是标题、列表、引用等特殊格式，跳过空行
-                    if not (next_line.startswith('#') or
-                           next_line.startswith('-') or
-                           next_line.startswith('*') or
-                           next_line.startswith('>') or
-                           next_line.startswith('```') or
-                           next_line.startswith('|')):
-                        # 跳过这个单空行
+                    current_line = line.strip()
+
+                    # 决定是否保留空行：
+                    # 1. 如果下一行是标题（# ## ###），保留空行（标题前需要空行）
+                    # 2. 如果当前行是标题，下一行不是标题，保留空行（标题后需要空行）
+                    # 3. 其他情况（列表之间、普通文本之间），移除空行
+                    should_keep_empty = False
+
+                    # 下一行是标题，保留空行
+                    if next_line.startswith('#'):
+                        should_keep_empty = True
+                    # 当前行是标题，下一行不是标题，保留空行
+                    elif current_line.startswith('#') and not next_line.startswith('#'):
+                        should_keep_empty = True
+
+                    # 如果不需要保留空行，跳过它
+                    if not should_keep_empty:
                         i += 1
             i += 1
 
