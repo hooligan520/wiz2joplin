@@ -267,14 +267,22 @@ def convert_obsidian_body(
 
     # 根据笔记类型选择不同的 HTML 转 Markdown 方法
     if is_markdown:
-        # .md 结尾的笔记：为知笔记把每一行 Markdown 都包裹在 <p> 标签中
-        # 直接提取 <p> 标签内容，避免产生多余空行
+        # .md 结尾的笔记：为知笔记把每一行 Markdown 都包裹在 <p> 或 <div> 标签中
+        # 直接提取标签内容，避免产生多余空行
         # 移除HTML注释
         body = re.sub(r'<!--.*?-->', '', body, flags=re.DOTALL)
 
-        # 提取所有 <p>...</p> 的内容
-        p_pattern = r'<p>(.*?)</p>'
-        matches = re.findall(p_pattern, body, flags=re.DOTALL)
+        # 检查是使用 <p> 标签还是 <div> 标签
+        p_count = body.count('<p>')
+        div_count = body.count('<div')
+
+        # 如果有 <p> 标签，优先使用 <p>；否则使用 <div>
+        if p_count > 0:
+            pattern = r'<p>(.*?)</p>'
+        else:
+            pattern = r'<div[^>]*>(.*?)</div>'
+
+        matches = re.findall(pattern, body, flags=re.DOTALL)
 
         lines = []
         for match in matches:
@@ -289,7 +297,7 @@ def convert_obsidian_body(
             # 移除行尾空白
             text = text.rstrip()
 
-            # 如果内容为空，说明是原始 Markdown 中的空行（通常是 <p><br></p>）
+            # 如果内容为空，说明是原始 Markdown 中的空行（通常是 <p><br></p> 或 <div><br></div>）
             if not text:
                 lines.append('')
             else:
