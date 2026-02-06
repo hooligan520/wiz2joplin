@@ -310,6 +310,34 @@ def convert_obsidian_body(
 
         # 限制连续换行符为最多2个（即最多一个空行）
         body = re.sub(r'\n{3,}', '\n\n', body)
+
+        # 对于新版编辑器的笔记，移除大部分单行空行（保留有意义的段落分隔）
+        # 新版编辑器会为每个文本块（<div>）添加空行，导致过多空行
+        lines = body.split('\n')
+        result_lines = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            result_lines.append(line)
+
+            # 如果当前行非空，且下一行是空行
+            if line.strip() and i + 1 < len(lines) and not lines[i + 1].strip():
+                # 检查空行后面是否还有内容
+                if i + 2 < len(lines) and lines[i + 2].strip():
+                    next_line = lines[i + 2].strip()
+                    # 如果下一行不是标题、列表、引用等特殊格式，跳过空行
+                    if not (next_line.startswith('#') or
+                           next_line.startswith('-') or
+                           next_line.startswith('*') or
+                           next_line.startswith('>') or
+                           next_line.startswith('```') or
+                           next_line.startswith('|')):
+                        # 跳过这个单空行
+                        i += 1
+            i += 1
+
+        body = '\n'.join(result_lines)
+
         # 移除行尾空白
         body = '\n'.join(line.rstrip() for line in body.split('\n'))
 
