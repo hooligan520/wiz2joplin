@@ -222,6 +222,7 @@ class ObsidianStorage:
         logger.info(f'正在处理笔记: {document.guid}|{document.document_type}|{document.title}')
 
         # 检查是否已迁移且为最新版本（如果没有设置 force 参数）
+        is_new_note = False
         if not self.force:
             is_up_to_date, exists = self.cu.is_note_up_to_date(document.guid, document.modified)
             if is_up_to_date:
@@ -239,6 +240,8 @@ class ObsidianStorage:
                     tags = self.ws.tags_in_document.get(document.guid, [])
                     # 强制重新解析（force=True）
                     document.resolve(attachments, tags, strict_check=False, force=True)
+            else:
+                is_new_note = True
         else:
             # 如果设置了 force，强制重新解析文档
             logger.info(f'强制模式：重新迁移笔记 {document.guid} |{document.title}|')
@@ -288,14 +291,8 @@ class ObsidianStorage:
         self.cu.add_note(document, note_file)
 
         # 统计迁移结果
-        if self.force:
-            # 强制模式下，都算作新迁移
+        if self.force or is_new_note:
             self.stats['migrated'] += 1
-        else:
-            # 非强制模式，根据是否已存在判断
-            _, exists = self.cu.is_note_up_to_date(document.guid, document.modified)
-            if not exists:
-                self.stats['migrated'] += 1
 
         logger.info(f'笔记已保存: {note_file}')
 
