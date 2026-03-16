@@ -11,6 +11,7 @@ import chardet
 from html import unescape
 from inscriptis import get_text
 import html2text
+from bs4 import BeautifulSoup
 from w2j import logger
 
 
@@ -305,12 +306,145 @@ def convert_obsidian_body(
 
         body = '\n'.join(lines)
     else:
-        # 非 .md 结尾的笔记：使用 html2text 转换
+        # 非 .md 结尾的笔记：先用 BeautifulSoup 提取表格并替换为占位符，
+        # 再用 html2text 转换剩余内容，最后将占位符替换为手动生成的 Markdown 表格。
+        # 这样可以避免 html2text 处理含 <ol>/<ul> 的表格单元格时产生结构混乱的问题。
+
+        def extract_cell_text(cell_tag) -> str:
+            """从单元格标签中提取纯文本，多个段落/列表项之间用换行符连接。
+            单元格内的 | 符号需要转义为 \\|，避免破坏 Markdown 表格结构。
+            """
+            parts = []
+            # 遍历直接子元素，按顺序收集文本内容
+            for child in cell_tag.children:
+                if hasattr(child, 'name'):
+                    tag_name = child.name
+                    if tag_name in ('p', 'div', 'span', 'font'):
+                        text = child.get_text(separator='', strip=False).strip()
+                        if text:
+                            parts.append(text)
+                    elif tag_name in ('ol', 'ul'):
+                        for li in child.find_all('li', recursive=False):
+                            li_text = li.get_text(separator='', strip=False).strip()
+                            if li_text:
+                                parts.append(li_text)
+                    elif tag_name == 'br':
+                        # 裸 <br> 不贡献文本，跳过
+                        pass
+                    else:
+                        # 其他标签（如 <a>、<strong> 等），直接取文本
+                        text = child.get_text(separator='', strip=False).strip()
+                        if text:
+                            parts.append(text)
+                else:
+                    # NavigableString（裸文本节点）
+                    text = str(child).strip()
+                    if text:
+                        parts.append(text)
+
+            combined = ' '.join(parts) if parts else ''
+            # 转义单元格内的 | 符号
+            combined = combined.replace('|', r'\|')
+            return combined
+
+        def table_to_markdown(table_tag) -> str:
+            """将 BeautifulSoup 的 <table> 标签转换为 Markdown 表格字符串。"""
+            rows = []
+
+            # 收集表头行（<thead> 中的 <tr>，或第一行含 <th> 的 <tr>）
+            header_cells = []
+            thead = table_tag.find('thead')
+            if thead:
+                header_tr = thead.find('tr')
+                if header_tr:
+                    for th in header_tr.find_all(['th', 'td'], recursive=False):
+                        header_cells.append(extract_cell_text(th))
+
+            # 收集数据行（<tbody> 中的 <tr>）
+            data_rows = []
+            tbody = table_tag.find('tbody')
+            if tbody:
+                for tr in tbody.find_all('tr', recursive=False):
+                    cells = []
+                    for td in tr.find_all(['td', 'th'], recursive=False):
+                        cells.append(extract_cell_text(td))
+                    if cells:
+                        data_rows.append(cells)
+
+            # 如果没有 <thead>，尝试从第一行含 <th> 的行提取表头
+            if not header_cells:
+                all_trs = table_tag.find_all('tr')
+                if all_trs:
+                    first_tr = all_trs[0]
+                    ths = first_tr.find_all('th', recursive=False)
+                    if ths:
+                        for th in ths:
+                            header_cells.append(extract_cell_text(th))
+                        # 其余行作为数据行
+                        data_rows = []
+                        for tr in all_trs[1:]:
+                            cells = []
+                            for td in tr.find_all(['td', 'th'], recursive=False):
+                                cells.append(extract_cell_text(td))
+                            if cells:
+                                data_rows.append(cells)
+                    else:
+                        # 完全没有表头，把第一行当表头
+                        tds = first_tr.find_all(['td', 'th'], recursive=False)
+                        for td in tds:
+                            header_cells.append(extract_cell_text(td))
+                        data_rows = []
+                        for tr in all_trs[1:]:
+                            cells = []
+                            for td in tr.find_all(['td', 'th'], recursive=False):
+                                cells.append(extract_cell_text(td))
+                            if cells:
+                                data_rows.append(cells)
+
+            if not header_cells:
+                return ''
+
+            col_count = len(header_cells)
+            md_lines = []
+
+            # 表头行
+            md_lines.append('| ' + ' | '.join(header_cells) + ' |')
+            # 分隔行
+            md_lines.append('| ' + ' | '.join(['---'] * col_count) + ' |')
+            # 数据行
+            for row_cells in data_rows:
+                # 补齐或截断列数
+                padded = row_cells[:col_count]
+                while len(padded) < col_count:
+                    padded.append('')
+                md_lines.append('| ' + ' | '.join(padded) + ' |')
+
+            return '\n'.join(md_lines)
+
+        # 第一步：用 BeautifulSoup 提取所有 <table>，替换为占位符
+        soup = BeautifulSoup(body, 'html.parser')
+        table_tags = soup.find_all('table')
+        table_markdown_map: dict[str, str] = {}
+
+        for idx, table_tag in enumerate(table_tags):
+            placeholder = f'__TABLE_PLACEHOLDER_{idx}__'
+            table_md = table_to_markdown(table_tag)
+            table_markdown_map[placeholder] = table_md
+            # 用占位符替换原始 table 标签
+            table_tag.replace_with(f'\n\n{placeholder}\n\n')
+
+        body_without_tables = str(soup)
+
+        # 第二步：用 html2text 转换不含表格的 HTML
         h = html2text.HTML2Text()
         h.ignore_links = False  # 保留链接
         h.ignore_images = False  # 保留图片
         h.body_width = 0  # 禁用自动换行
-        body = h.handle(body)
+        body = h.handle(body_without_tables)
+
+        # 第三步：将占位符替换为 Markdown 表格
+        for placeholder, table_md in table_markdown_map.items():
+            body = body.replace(placeholder, table_md)
 
         # 修复标题格式：html2text 在处理嵌套标签时会将标题标记和文本分成两行
         # 例如 "# \n\n标题文本" -> "# 标题文本"
@@ -338,7 +472,8 @@ def convert_obsidian_body(
                     # 决定是否保留空行：
                     # 1. 如果下一行是标题（# ## ###），保留空行（标题前需要空行）
                     # 2. 如果当前行是标题，下一行不是标题，保留空行（标题后需要空行）
-                    # 3. 其他情况（列表之间、普通文本之间），移除空行
+                    # 3. 如果下一行是表格（包含 | 或者是分隔行），保留空行（Obsidian 表格前需要空行）
+                    # 4. 其他情况（列表之间、普通文本之间），移除空行
                     should_keep_empty = False
 
                     # 下一行是标题，保留空行
@@ -346,6 +481,9 @@ def convert_obsidian_body(
                         should_keep_empty = True
                     # 当前行是标题，下一行不是标题，保留空行
                     elif current_line.startswith('#') and not next_line.startswith('#'):
+                        should_keep_empty = True
+                    # 下一行是表格（包含管道符或者是分隔行），保留空行
+                    elif '|' in next_line or re.match(r'^[\-:]+\|', next_line):
                         should_keep_empty = True
 
                     # 如果不需要保留空行，跳过它

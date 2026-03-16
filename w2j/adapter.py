@@ -607,7 +607,7 @@ class ObsidianAdapter(object):
     obsidian_storage: 'ObsidianStorage'
     work_dir: Path
 
-    def __init__(self, ws: WizStorage, vault_path: Path, work_dir: Path=None, enable_resume: bool = True) -> None:
+    def __init__(self, ws: WizStorage, vault_path: Path, work_dir: Path=None, force: bool = False) -> None:
         from w2j.obsidian import ObsidianStorage
         self.ws = ws
         self.work_dir = work_dir or default_work_dir
@@ -616,7 +616,7 @@ class ObsidianAdapter(object):
         self.ws.resolve(strict_check=False)
 
         # 创建 Obsidian 存储，传入 ws 以便需要时重新解析文档
-        self.obsidian_storage = ObsidianStorage(vault_path, self.work_dir, enable_resume=enable_resume, ws=ws)
+        self.obsidian_storage = ObsidianStorage(vault_path, self.work_dir, force=force, ws=ws)
 
     def sync_note_by_location(self, location: str, with_children: bool=True) -> None:
         """ 同步指定为知笔记目录中所有的笔记

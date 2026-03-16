@@ -93,18 +93,18 @@ class ObsidianStorage:
     vault_path: Path
     work_dir: Path
     cu: ObsidianConvertUtil
-    enable_resume: bool
+    force: bool  # 是否强制重新迁移
     ws: WizStorage  # WizStorage 引用，用于需要更新时重新解析文档
 
     # 统计信息
     stats: dict[str, int]
 
-    def __init__(self, vault_path: Path, work_dir: Path, enable_resume: bool = True, ws: WizStorage = None) -> None:
+    def __init__(self, vault_path: Path, work_dir: Path, force: bool = False, ws: WizStorage = None) -> None:
         self.vault_path = Path(vault_path).expanduser()
         if not self.vault_path.exists():
             self.vault_path.mkdir(parents=True)
         self.work_dir = work_dir
-        self.enable_resume = enable_resume
+        self.force = force
         self.ws = ws
         self.cu = ObsidianConvertUtil(self.work_dir.joinpath('w2o.sqlite'))
         # 初始化统计信息
@@ -221,8 +221,8 @@ class ObsidianStorage:
         """
         logger.info(f'正在处理笔记: {document.guid}|{document.document_type}|{document.title}')
 
-        # 检查是否已迁移且为最新版本（仅在启用断点续传时）
-        if self.enable_resume:
+        # 检查是否已迁移且为最新版本（如果没有设置 force 参数）
+        if not self.force:
             is_up_to_date, exists = self.cu.is_note_up_to_date(document.guid, document.modified)
             if is_up_to_date:
                 logger.info(f'笔记 {document.guid} |{document.title}| 已是最新版本，跳过。')
@@ -239,6 +239,13 @@ class ObsidianStorage:
                     tags = self.ws.tags_in_document.get(document.guid, [])
                     # 强制重新解析（force=True）
                     document.resolve(attachments, tags, strict_check=False, force=True)
+        else:
+            # 如果设置了 force，强制重新解析文档
+            logger.info(f'强制模式：重新迁移笔记 {document.guid} |{document.title}|')
+            if self.ws is not None:
+                attachments = self.ws.attachments_in_document.get(document.guid, [])
+                tags = self.ws.tags_in_document.get(document.guid, [])
+                document.resolve(attachments, tags, strict_check=False, force=True)
 
         # 获取文件路径
         note_file = self._get_note_file_path(document)
@@ -277,13 +284,18 @@ class ObsidianStorage:
         modified_time = document.modified / 1000
         os.utime(note_file, (created_time, modified_time))
 
-        # 记录到数据库（仅在启用断点续传时）
-        if self.enable_resume:
-            self.cu.add_note(document, note_file)
-        
-        # 统计新迁移的笔记（不包括更新的）
-        if not self.enable_resume or not self.cu.is_note_up_to_date(document.guid, document.modified)[1]:
+        # 记录到数据库（始终记录以便断点续传）
+        self.cu.add_note(document, note_file)
+
+        # 统计迁移结果
+        if self.force:
+            # 强制模式下，都算作新迁移
             self.stats['migrated'] += 1
+        else:
+            # 非强制模式，根据是否已存在判断
+            _, exists = self.cu.is_note_up_to_date(document.guid, document.modified)
+            if not exists:
+                self.stats['migrated'] += 1
 
         logger.info(f'笔记已保存: {note_file}')
 
